@@ -184,6 +184,89 @@ codegraph init -i
 
 ---
 
+## 七、深度探索补充（v2，自动加载型，不含 skills）
+
+> 筛选标准：**能被 Agent 自动识别/自动使用**（MCP、hooks、plugins），排除手动 slash-command/skills 类。
+
+### 7.1 Serena MCP ⭐ 推荐（语义代码检索，免费）
+
+**仓库**：https://github.com/oraios/serena
+
+基于 LSP 的语义级 `find_symbol` / `find_referencing_symbols` / 符号级编辑，与 codegraph 互补（codegraph 偏图关系，Serena 偏精确符号操作）。
+
+```powershell
+claude mcp add serena --scope user -- cmd /c uvx --from git+https://github.com/oraios/serena serena start-mcp-server
+```
+
+- **优点**：完全免费本地运行；uvx 自动拉取最新版免维护；MCP 自动加载无需配置规则。
+- **缺点**：每次首次启动 uvx 解析略慢；与 codegraph/graft 功能有重叠（大仓库三者选二即可）。
+
+### 7.2 chrome-devtools-mcp ⭐ 推荐（真实浏览器调试）
+
+**仓库**：https://github.com/ChromeDevTools/chrome-devtools-mcp
+
+Google 官方。让 Agent 直接控制真实 Chrome：性能 trace、网络检查、console 读取、截图、性能分析——比 playwright 更贴近"前端调试"场景（playwright 偏自动化测试，这个偏调试）。
+
+```powershell
+claude mcp add chrome-devtools --scope user -- cmd /c npx -y chrome-devtools-mcp@latest
+```
+
+- **优点**：Google 官方维护；性能 trace / network 检查是 playwright 没有的；npx 自动更新。
+- **缺点**：需要本机有 Chrome；和 playwright MCP 二选一按需开，都开会占上下文。
+
+### 7.3 claude-context（Zilliz）⭐ 推荐（全库语义搜索）
+
+**仓库**：https://github.com/zilliztech/claude-context
+
+向量化的"整个代码库作为上下文"语义检索（embedding + Milford/Zilliz Cloud）。grep/codegraph 找不到"语义相近但名字不同"的代码时靠它。
+
+```powershell
+claude mcp add claude-context --scope user -- cmd /c npx -y @zilliz/claude-context-mcp
+```
+
+- **优点**：语义级检索，补齐 AST 图谱的盲区；官方 MCP 自动加载。
+- **缺点**：需要 embedding API key（如 OpenAI/voyage，有少量费用）+ 向量库；本地免费方案需配 Milvus Lite。
+
+### 7.4 beads (bd) — AI Agent 依赖感知任务追踪（已装未接入）
+
+**仓库**：https://github.com/gastownhall/beads ｜ 本机已装：`bd version 1.1.0`
+
+把任务/issue 建成**依赖图**持久化在 git 仓库里（Dolt 驱动），Agent 跨会话处理长任务不丢上下文，取代散乱的 markdown 计划。
+
+```powershell
+bd init        # 项目内初始化
+bd create "任务标题" --type task --priority 1
+bd ready       # 查看当前无阻塞可做的任务（Agent 自动认领）
+bd close <id>  # 完成任务
+```
+
+- **优点**：`bd ready` 天然适配 Agent "下一步做什么"的决策；依赖图防止 Agent 跳步；数据随 git 走。
+- **缺点**：需要每个项目 `bd init`；与 `workflow_status.md` 流程二选一，别双轨记账。
+- **Agent 自动化**：在 CLAUDE.md 加一条规则即可（"复杂任务先 `bd ready` 认领、完成 `bd close`"）。
+
+### 7.5 Trail-Code（graft 的进化版，观察名单）
+
+**仓库**：https://github.com/trailhq/Trail-Code
+
+graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团队踩过的坑/决策自动钉在图谱上）。graft 用户关注，等 Windows 稳定后可替换。
+
+### 7.6 已装但值得启用的（本机现状备注）
+
+| 工具 | 状态 | 建议 |
+|------|------|------|
+| `context7` | 仅装在某个项目作用域 | **升为全局**：`claude mcp add context7 --scope user -- cmd /c npx -y @upstash/context7-mcp` |
+| `bd` (beads) | 已装 1.1.0，未在任何项目启用 | 按上节接入复杂项目 |
+| `tokentracker-cli` / `ccline` | 已装 | ccline 可做 statusLine 状态栏（显示上下文用量，防爆栈） |
+| `code-review-graph` | ❌ serve 故障（pyvenv.cfg 损坏） | 重装其 Python venv 或移除该 MCP 避免报错 |
+
+### 7.7 观察名单（好但不满足"自动加载"或暂不成熟）
+
+- **supermemory**（`/plugin install supermemory`）：插件市场自动加载的记忆插件，与 icm 重叠，icm 更强。
+- **everything-claude-code (ecc)**：hooks 套件（agentshield 等），本机 CLAUDE.md 已引用其方法，可按需装。
+- **claude-md-doctor**：CLAUDE.md 体检工具，一次性诊断用，非常驻。
+
+---
+
 ## 更新维护
 
 | 工具 | 更新命令 |
