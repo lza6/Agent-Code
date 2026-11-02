@@ -541,6 +541,46 @@ claude mcp add cocoindex-code --scope user -- cmd /c ccc mcp
 ```
 日常：编辑后 hooks 自动增量索引（需装其 hooks）；手动 `ccc index` 也只要 0.5s。搜索 Agent 自动调用（MCP `search` 工具，refresh_index 默认 true）。
 
+#### 5-3.1 cocoindex-code 完整使用教程（本机已配置）
+
+**三种角色**：`ccc` CLI（你/Agent 在终端跑）、MCP server（Claude Code 自动调用）、hooks（编辑后自动索引，可选装）。
+
+**一、新项目接入（每次 30 秒）**
+```powershell
+cd C:\path\to\新项目
+ccc init                 # 交互式：一路回车（默认 snowflake-arctic-embed-xs）
+                         # 生成 .cocoindex_code/（settings.yml + SQLite 索引，加进 .gitignore）
+ccc index                # 建索引（小仓库 2s，大仓库按体积）
+```
+之后 MCP 才在这个项目可用（MCP 进程的 cwd=项目根，`ccc mcp` 从 `.cocoindex_code/` 读索引）。
+
+**二、日常使用（谁是主角）**
+| 场景 | 谁来做 | 命令/行为 |
+|------|--------|----------|
+| 代码改了，索引旧了 | ① 手动：终端/会话里让 Agent 跑 `ccc index`（0.5s）② 自动：装其 hooks（见下） | `ccc index` |
+| 想语义搜代码 | **会话里直接用自然语言问 Agent**："项目里哪里处理了重试逻辑？" → Agent 自动调 MCP `search` 工具 | 零命令 |
+| 想按结构精确搜（函数名/正则） | 不用 ccc——用 graft/Serena/普通 grep | — |
+| 想结构化 grep（给一段示例代码找相似代码，免索引） | 终端或 Agent 跑 | `ccc grep "def foo(self, x): return x*2"` |
+| 看索引健康 | `ccc status`（项目级）/ `ccc doctor`（全局体检）/ `ccc daemon` 状态 | — |
+| 索引坏了重来 | `ccc reset`（项目级，`--all` 连设置一起清） | — |
+
+**三、可选：编辑后自动增量索引（hooks）**
+仓库的 `hooks/hooks.json` 提供两条：SessionStart + PostToolUse（Edit/Write 触发 `ccc index`，仅当项目存在 `.cocoindex_code/settings.yml` 时生效，安全空转）。想要全自动就把这两条 hook 加进 `~/.claude/settings.json`（写法同 context-mode 接入方式，command 为 `ccc index`）。**本机暂未启用**——项目少时手动 `ccc index` 更可控，等项目多了再开。
+
+**四、什么时候用 ccc vs 其他（速查）**
+| 你要找… | 用 |
+|---------|-----|
+| "处理重试逻辑的代码在哪"（含义级） | **ccc**（语义） |
+| "谁调用了这个函数 / 改这行影响什么"（结构级） | GitNexus / graft（图谱） |
+| "这个符号的定义/引用/重命名"（LSP 精确级） | Serena |
+| "README/笔记/规格里写过什么"（文档） | qmd |
+
+**五、更新与卸载**
+```powershell
+uv tool upgrade cocoindex-code   # 升级
+uv tool uninstall cocoindex-code # 卸载（项目里 .cocoindex_code/ 目录手动删）
+```
+
 **与图谱三件套分工**：graft/GitNexus 管**结构**（依赖链/影响半径），ccc 管**含义**（"哪段代码处理重试"这种 grep 不出来的问题），Serena 管**符号**（LSP 精确跳转）。四者并存。
 
 ---
