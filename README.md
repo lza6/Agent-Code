@@ -431,7 +431,7 @@ qmd update                                      # 建索引（BM25 全文立即�
 
 **本机已索引集合**：`rules`（Desktop\编码规则）、`agentcode`（本仓库）。
 
-#### 附：MCP 全景使用手册（11 个 server，谁自动、谁要手动）
+#### 附：MCP 全景使用手册（12 个 server，谁自动、谁要手动）
 
 | # | MCP | 管什么 | Agent 是否自动用 | 需要手动做什么 |
 |---|-----|--------|-----------------|---------------|
@@ -445,9 +445,41 @@ qmd update                                      # 建索引（BM25 全文立即�
 | 8 | chrome-devtools | 干净 Chrome 实例：调试/截图/性能追踪/真实路径验证 | ✅ 自动（前端任务时 Agent 会调） | 无（会自动起浏览器） |
 | 9 | windows-mcp | Windows 桌面 UI 自动化（19 工具，见 7.10） | ✅ 自动（工具就位） | 无。注意键鼠会抢焦点 |
 | 10 | code-review-graph | 审查图谱（变更检测/影响半径） | ✅ 自动（有图谱才用） | **新项目一次**：`code-review-graph build` |
-| 11 | qmd | 本地文档语义检索（笔记/规格/README） | ✅ 自动（已索引的集合） | **每台机器一次**：collection add + update + pull + embed（见上文）；新文档目录要 collection add |
+| 11 | qmd | 本地文档 BM25 检索（笔记/规格/README） | ✅ 自动（已索引的集合） | **每台机器一次**：collection add + update（**不接模型**，见 7.12）；新文档目录要 collection add |
+| 12 | gitnexus | 架构级代码知识图谱（依赖链/调用链/盲改检测） | ✅ 自动（有索引才用） | **新项目一次**：`npx gitnexus analyze` |
 
-**总结**：全部 11 个都是"Agent 自动调用"型，日常零手动。唯一的维护动作是**新项目**跑一次图谱初始化（codegraph/graft/code-review-graph 三选一或组合，建议 graft 为主），以及**新文档目录**加入 qmd 索引。
+**总结**：全部 12 个都是"Agent 自动调用"型，日常零手动。唯一的维护动作是**新项目**跑一次图谱初始化（graft 为主，GitNexus/graft/codegraph/code-review-graph 按需组合），以及**新文档目录**加入 qmd 索引。
+
+### 7.13 第五轮全量扫描（2026-02，13 大类目录全翻）
+
+**GitNexus ✅ 已接入（1.6.12，实测 Connected）**——第 12 个 MCP：
+
+```powershell
+npm install -g gitnexus                     # CLI
+# 在项目根目录（一次性，建索引+注册 hooks+生成 AGENTS.md/CLAUDE.md 上下文）：
+npx gitnexus analyze                        # 本仓库实测 23.6s，37 节点/35 边
+claude mcp add gitnexus --scope user -- cmd /c gitnexus mcp   # MCP
+```
+
+- **定位**：本地代码知识图谱（图数据库 LadybugDB）+ 架构级问答——比 graft 多"依赖链/调用链/盲改检测"视角，Agent 由此不再漏依赖
+- **免费本地**：嵌入用本地 ONNX 运行时（`gitnexus embeddings` 管理），向量检索有 exact-scan 模式兜底，不强制下载大模型
+- **维护**：新项目 `npx gitnexus analyze`；全局仓库列表 `gitnexus list`；卸载 `gitnexus uninstall`
+- 与 graft/codegraph/Serena 并列使用，不冲突
+
+**第五轮评估但未接入**（理由如下）：
+
+| 工具 | 类型 | 不接入理由 |
+|------|------|-----------|
+| headroom (0.2.7) | token 压缩 MCP/wrap | PyPI 版无 MCP server（README 描述的 MCP 在 GitHub main 未发版）；wrap 模式强制配 LLM provider（交互式 first-run）；与 rtk+context-mode 完全重叠 → 观察名单 |
+| HexStrike AI | 安全渗透 MCP（150+ 工具） | 渗透测试专用，高风险工具集，非日常开发 → 按需 |
+| cocoindex (CocoIndex-code) | AST 语义代码索引 MCP | 与 graft/GitNexus 同赛道且更新太快，先观察两者实战收益 |
+| graphify | 图表生成 skill 安装器 | 主要是 skill 注册（用户排除 skill 类），CLI 部分可按需 `npx graphify` |
+| agent-deck / agent-teams-ai | 多智能体编排 | 编排层工具，与 Claude Code 内置 Agent/teams 重叠 |
+| token-savior | MCP profile 压缩 | pip 装但核心向量档需 embedding 模型（算力原则），BM25 档与 context-mode 重叠 |
+
+**扫描覆盖**：04-网络安全/05-基础设施/07-前端/08-多媒体/11-金融/13-清单 全部剩余子目录逐个翻 README 提取 MCP/hooks/插件特征（grep "claude mcp/MCP server/model context protocol/plugin"），确认无遗漏自动加载型工具。
+
+**最终结论**：五轮全量扫描完成。工具链 12 MCP 全绿，零算力原则守住（qmd 无模型、GitNexus 用本地 ONNX exact-scan、headroom 排除）。安全渗透类（HexStrike）和 RAG 类（LightRAG/graphrag）按需待取。
 
 ---
 
