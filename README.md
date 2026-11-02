@@ -291,7 +291,7 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 
 | 工具 | 状态 | 建议 |
 |------|------|------|
-| `context7` | 仅装在某个项目作用域 | **升为全局**：`claude mcp add context7 --scope user -- cmd /c npx -y @upstash/context7-mcp` |
+| `context7` | ✅ 已升为全局 user 作用域 | 7.10 已验证 Connected |
 | `bd` (beads) | ✅ 已装 1.1.0，`bd setup claude` 配方已验证 | 每个新项目：`bd init && bd setup claude`（详见 7.4 节） |
 | `serena` MCP | ✅ 已接入全局（uvx 版，首装预热约 1-2 分钟，之后秒连） | 会话里直接用其 find_symbol 等工具 |
 | `tokentracker-cli` / `ccline` | 已装 | ccline 可做 statusLine 状态栏（显示上下文用量，防爆栈） |
@@ -312,11 +312,42 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 | `bun@1.3.2` / `uv` | 运行时 | 已在为其他工具服务 |
 | choco: ripgrep/ffmpeg/redis/nasm | 系统级依赖 | 无需动 |
 
-**结论**：免费工具链已覆盖——图谱（graft+codegraph+Serena）、记忆（icm）、任务（beads）、输出压缩（rtk）、文档（context7 待升全局）、调试（chrome-devtools 待接入）、推理（sequential-thinking）。无遗漏的高价值空白。
+**结论**：免费工具链已覆盖——图谱（graft+codegraph+Serena）、记忆（icm）、任务（beads）、输出压缩（rtk）、文档（context7 ✅）、调试（chrome-devtools ✅）、推理（sequential-thinking）。第二轮扫描新发现见 7.10。
 
 ### 7.9 观察名单（好但不满足"自动加载"或暂不成熟）
 - **everything-claude-code (ecc)**：hooks 套件（agentshield 等），本机 CLAUDE.md 已引用其方法，可按需装。
 - **claude-md-doctor**：CLAUDE.md 体检工具，一次性诊断用，非常驻。
+
+### 7.10 第二轮全量扫描新发现（2026-02）
+
+扫描范围：npm 全局清单复核、`.local/bin`/`.bun/bin`/choco/uv 复扫、D:\参考项目 各分类目录翻新、awesome-claude-code 与 claude-plugins-official 上游生态。
+
+#### 已接入 ✅（实测 `claude mcp list` Connected）
+
+| 工具 | 类型 | 接入命令（PowerShell） | 优点 | 缺点 | 验证 |
+|------|------|----------------------|------|------|------|
+| **context7** (Upstash) | MCP 文档检索 | `claude mcp add context7 --scope user -- cmd /c npx -y @upstash/context7-mcp` | 免费拉取库官方文档，版本敏感编码必备；Agent 自动调用 | 首次 npx 拉包需预热 | ✅ Connected |
+| **chrome-devtools-mcp** | MCP 浏览器调试 | `claude mcp add chrome-devtools --scope user -- cmd /c npx -y chrome-devtools-mcp@latest` | Google 官方，干净 Chrome 实例做真实路径验证/性能追踪 | 每次新实例无登录态 | ✅ Connected |
+
+> **Git Bash 注意**：`claude mcp add ... -- cmd /c npx ...` 在 Git Bash 里 `/c` 会被转义成 `C:/` 路径导致配置损坏——**必须用 PowerShell 执行 add 命令**。
+
+同时清理了 graft 的 user/project 作用域重复定义（保留 user 作用域），`claude mcp list` 诊断区已无警告。当前 8/9 MCP Connected（仅 code-review-graph 故障，见 7.6）。
+
+#### 新发现候选（实测可用，按需接入）
+
+| 工具 | 类型 | 安装/接入 | 优点 | 缺点 | 与现有重叠 |
+|------|------|----------|------|------|-----------|
+| **Windows-MCP** (CursorTouch) | MCP，Windows 桌面 UI 自动化 | `claude mcp add windows-mcp --scope user -- cmd /c uvx windows-mcp` | 免费本地；打开应用/窗口控制/键鼠模拟，Claude Desktop 2M+ 用户 | Python 3.13+；UI 自动化有误操作风险，建议按需开启 | 互补（现工具链无桌面控制能力） |
+| **mcp-chrome** (hangwin) | MCP，Chrome 插件式浏览器控制 | `npm install -g mcp-chrome-bridge` + 装配套 Chrome 扩展 | 复用**真实浏览器登录态**，20+ 工具（截图/网络监控/跨标签页） | 早期阶段；需手动装扩展 | 与 chrome-devtools-mcp 互补：后者干净实例调试，前者带登录态真实操作 |
+| **claude-hud** (jarrodwatts) | statusline 插件 | Claude Code 内：`/plugin marketplace add jarrodwatts/claude-hud` → `/plugin install claude-hud` → `/claude-hud:setup` | 实时上下文用量条（>85% 红色预警，防 context 爆栈）、工具/子代理状态 | 插件命令交互式安装，未在本会话实测；与 ccline 功能重叠 | 与已装 ccline 二选一即可 |
+
+#### 仅对比说明（与已装重叠，不接入）
+
+- **codebase-memory-mcp** (DeusData)：纯 C 后端、17 工具、162 语言、Hybrid LSP 类型解析，还有 3D 图谱可视化（CBM Lens）。功能上是 graft+codegraph+Serena 的超集候选，但三件套已稳定在用，迁移收益不明确 → 观察名单。
+- **MCPProxy (mcpproxy-go)**：Go 单二进制 MCP 聚合代理——BM25 工具检索省 token、新 server 自动隔离防工具投毒、敏感数据检测。当前本机 MCP 仅 9 个，聚合收益低；等 server 数量上来再考虑。
+- **claude-plugins-official 的 LSP 插件**（typescript-lsp / pyright-lsp / gopls-lsp 等）：官方插件把 LSP 诊断接入 Agent 自动使用，免费且零边际。按项目语言选择性启用，Windows 上启用方式：`/plugin marketplace add anthropics/claude-plugins-official`。
+
+**结论更新**：context7 与 chrome-devtools 两个"待接入"已全部落地验证，免费工具链闭环完成。剩余高价值新方向只有 Windows 桌面控制（Windows-MCP）和带登录态浏览器（mcp-chrome），均按需启用。
 
 ---
 
@@ -329,6 +360,7 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 | icm | `icm upgrade` |
 | rtk | 重新下载对应发布版 |
 | MCP (npx 类) | 无需手动，npx 自动拉最新 |
+| windows-mcp | uvx 自动拉最新，无需手动 |
 
 ## License
 
