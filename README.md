@@ -394,6 +394,62 @@ claude mcp add windows-mcp --scope user -- cmd /c uvx windows-mcp serve
 
 **结论**：与现有工具链功能重叠外的空白已基本扫尽。下一个真正值得试的是 **context-mode**（与 rtk 互补的另一半 context 治理），其次是 qmd（本地文档语义检索）。
 
+### 7.12 第四轮：context-mode 与 qmd 落地 + MCP 全景使用手册（2026-02）
+
+#### context-mode ✅ 已接入（实测 Connected）
+
+```powershell
+claude mcp add context-mode --scope user -- cmd /c npx -y context-mode
+```
+
+- **原理**：MCP 工具的大输出（Playwright 快照 ~56KB、GitHub issues 列表等）不再整段塞进 context，而是落盘到本地 FTS5 索引，context 里只留摘要，需要时 Agent 用 `ctx_search`/`ctx_fetch_and_index` 精准回填
+- **本机接入的是 MCP-only 模式**（6 个 ctx_* 工具自动可用）。完整版还有 hooks 自动路由（PreToolUse/PostToolUse/PreCompact/SessionStart）+ 插件，需走 plugin 安装路径，暂未启用——hooks 会改全局行为，观察 MCP 版收益后再决定
+- **与 rtk 的分工**：rtk 压缩 Bash 命令输出（RTK.md 指令层），context-mode 压缩 MCP 工具输出（MCP 层）——互补，可共存
+- 更新：npx 自动拉最新；诊断：会话内让它跑 `ctx_doctor`
+
+#### qmd ✅ 已接入（实测 Connected，2.8.3）
+
+```powershell
+npm install -g @tobilu/qmd          # 安装 CLI
+claude mcp add qmd --scope user -- cmd /c qmd mcp   # MCP（stdio）
+```
+
+**首次使用（每台机器一次性配置）**：
+```powershell
+qmd collection add "D:\我的笔记" --name notes   # 注册要索引的目录（默认 **/*.md）
+qmd update                                      # 建索引（BM25 全文立即可用）
+qmd pull                                        # 下载本地 GGUF 模型（一次性，较大）
+qmd embed                                       # 生成向量（此后 vsearch/query 可用）
+```
+日常维护：`qmd update` 重新索引新增/修改文档（可在会话里让 Agent 跑）。
+
+**三档检索**：
+- `qmd search "关键词"` — BM25 关键词，零模型，毫秒级（已实测：命中 README 81% 分）
+- `qmd vsearch "自然语言"` — 纯向量语义（需 embed）
+- `qmd query "自然语言"` — 混合（BM25+向量+HyDE+LLM 重排，效果最好，最慢）
+
+**Agent 自动使用方式**：MCP 接入后 Agent 可直接调 qmd 工具检索已索引集合；CLI 也能让 Agent 跑 `qmd query`。定位与 graft/codegraph/Serena 互补——它们搜**代码结构**，qmd 搜**文档内容**（笔记/规格/README/转录）。
+
+**本机已索引集合**：`rules`（Desktop\编码规则）、`agentcode`（本仓库）。
+
+#### 附：MCP 全景使用手册（11 个 server，谁自动、谁要手动）
+
+| # | MCP | 管什么 | Agent 是否自动用 | 需要手动做什么 |
+|---|-----|--------|-----------------|---------------|
+| 1 | serena | 语义代码检索（find_symbol 等），大文件精准定位 | ✅ 自动（工具就位，Agent 按需调用） | 无。首装预热 1-2 分钟已完成 |
+| 2 | memory | 知识图谱长期记忆（跨会话实体/关系） | ✅ 自动 | 无 |
+| 3 | sequential-thinking | 分步推理草稿纸 | ✅ 自动 | 无 |
+| 4 | codegraph | 代码图谱查询（需项目先 `codegraph init -i`） | ✅ 自动（有图谱才用） | **新项目一次**：`codegraph init -i && codegraph index` |
+| 5 | icm | 持久记忆主力（hooks 全自动存取） | ✅✅ 全自动（hooks 触发，无需提醒） | 无 |
+| 6 | graft | 代码图谱+上下文检索 | ✅ 自动 | **新项目一次**：`graft init` |
+| 7 | context7 | 拉取库官方最新文档（版本敏感编码前查） | ✅ 自动 | 无 |
+| 8 | chrome-devtools | 干净 Chrome 实例：调试/截图/性能追踪/真实路径验证 | ✅ 自动（前端任务时 Agent 会调） | 无（会自动起浏览器） |
+| 9 | windows-mcp | Windows 桌面 UI 自动化（19 工具，见 7.10） | ✅ 自动（工具就位） | 无。注意键鼠会抢焦点 |
+| 10 | code-review-graph | 审查图谱（变更检测/影响半径） | ✅ 自动（有图谱才用） | **新项目一次**：`code-review-graph build` |
+| 11 | qmd | 本地文档语义检索（笔记/规格/README） | ✅ 自动（已索引的集合） | **每台机器一次**：collection add + update + pull + embed（见上文）；新文档目录要 collection add |
+
+**总结**：全部 11 个都是"Agent 自动调用"型，日常零手动。唯一的维护动作是**新项目**跑一次图谱初始化（codegraph/graft/code-review-graph 三选一或组合，建议 graft 为主），以及**新文档目录**加入 qmd 索引。
+
 ---
 
 ## 更新维护
