@@ -447,8 +447,9 @@ qmd update                                      # 建索引（BM25 全文立即�
 | 10 | code-review-graph | 审查图谱（变更检测/影响半径） | ✅ 自动（有图谱才用） | **新项目一次**：`code-review-graph build` |
 | 11 | qmd | 本地文档 BM25 检索（笔记/规格/README） | ✅ 自动（已索引的集合） | **每台机器一次**：collection add + update（**不接模型**，见 7.12）；新文档目录要 collection add |
 | 12 | gitnexus | 架构级代码知识图谱（依赖链/调用链/盲改检测） | ✅ 自动（有索引才用） | **新项目一次**：`npx gitnexus analyze` |
+| 13 | cocoindex-code | 语义代码搜索（自然语言查代码，Δ-only 增量） | ✅ 自动（已 init 项目） | **新项目一次**：`ccc init && ccc index`（未 init 项目 MCP 不可用） |
 
-**总结**：全部 12 个都是"Agent 自动调用"型，日常零手动。唯一的维护动作是**新项目**跑一次图谱初始化（graft 为主，GitNexus/graft/codegraph/code-review-graph 按需组合），以及**新文档目录**加入 qmd 索引。
+**总结**：全部 14 个都是"Agent 自动调用"型，日常零手动。唯一的维护动作是**新项目**跑一次图谱/索引初始化（`graft init` + `npx gitnexus analyze` + `ccc init && ccc index`），以及**新文档目录**加入 qmd 索引。
 
 ### 7.13 第五轮全量扫描（2026-02，13 大类目录全翻）
 
@@ -510,22 +511,37 @@ python hexstrike_server.py   # 起 API 服务（默认 127.0.0.1:8888），再�
 
 ---
 
-#### 5-3. cocoindex（CocoIndex-code）— AST 语义代码索引 MCP ⚠️ 同赛道待观察
+#### 5-3. cocoindex（CocoIndex-code）— AST 语义代码索引 MCP ✅ **已翻案接入**（v0.5.1，实测 Connected）
 
-**是什么**：增量式数据管道引擎，旗舰 CocoIndex-code 给 AI 编码 agent 做 AST 感知语义代码索引——Δ-only 增量处理（每次 commit 只处理变更）、语义搜索（按含义不按 grep）、live call graph、blast-radius 分析，宣称每回合省 70% token、re-index 80-90% 缓存命中。支持 Python/TS/Rust/Go。
+**是什么**：Rust 引擎的增量语义代码索引。`ccc` CLI + MCP：AST 感知分块、Δ-only 增量（只重处理变更文件）、本地嵌入（默认 Snowflake/snowflake-arctic-embed-xs，**仅 ~30MB 小模型，CPU 秒级**，不吃算力）、语义搜索按含义不按 grep。`ccc index` 还自带 hooks（SessionStart + PostToolUse 编辑后自动增量索引）和 `ccc grep` 结构化 grep（免索引）。
+
+**本机实测数据**（Agent-Code 仓库）：
+- 首次索引：**2.0 秒**（76 chunks / 4 files，含嵌入）
+- 改动后重索引：**0.5 秒**（Δ-only 生效， graft 全量重建的对比优势坐实）
+- 语义搜索：中文查询"增量索引去重缓存命中"命中 0.896 分相关段落 ✅
 
 | 优点 | 缺点 |
 |------|------|
-| 增量架构是真功夫（Δ-only + 缓存命中），大仓库更新成本极低 | **与 graft/GitNexus/Serena 三重重叠**：语义搜索 vs Serena、call graph/blast-radius vs GitNexus、增量索引 vs graft |
-| 官方 Claude Code 集成文档完善 | 语义向量部分需 embedding 配置（算力/key 敏感） |
-| 管道引擎通用（不只代码，Slack/文档也能索引） | 商业公司主导，企业功能可能走向收费 |
+| 增量真功夫：2s → 0.5s 实测；嵌入模型仅 30MB 无算力压力 | **MCP 只在已 `ccc init` 的项目里可用**（未 init 项目会 CONNECTION_CLOSED，算已知特性非故障） |
+| `ccc grep` 结构化 grep 免索引即可用 | call graph/blast-radius 弱于 GitNexus——它是**搜索型**不是**图谱型** |
+| 单文件嵌入式存储（SQLite），零数据库部署 | 与 Serena 语义搜索部分重叠（但 Serena 是 LSP 符号级，ccc 是自然语言级，互补） |
 
-**如果要用**：
+**接入命令（已执行）**：
 ```powershell
-pip install -U cocoindex
-# 按 https://cocoindex.io/docs/getting_started/ai_coding_agents/ 注册 MCP
+uv tool install 'cocoindex-code[full]'      # 含本地嵌入（sentence-transformers）
+# 首次免交互：预写全局设置（或跑 ccc init 交互）
+# ~/.cocoindex_code/global_settings.yml:
+#   embedding:
+#     provider: sentence-transformers
+#     model: Snowflake/snowflake-arctic-embed-xs
+# 每个项目根目录：
+ccc init          # 交互一次（或直接 ccc index 自动以默认设置初始化）
+ccc index         # 建索引（2s 级）
+claude mcp add cocoindex-code --scope user -- cmd /c ccc mcp
 ```
-**触发改判条件**：graft 或 GitNexus 在大仓库暴露"更新慢/图谱过时"问题时，A/B 替换测试。
+日常：编辑后 hooks 自动增量索引（需装其 hooks）；手动 `ccc index` 也只要 0.5s。搜索 Agent 自动调用（MCP `search` 工具，refresh_index 默认 true）。
+
+**与图谱三件套分工**：graft/GitNexus 管**结构**（依赖链/影响半径），ccc 管**含义**（"哪段代码处理重试"这种 grep 不出来的问题），Serena 管**符号**（LSP 精确跳转）。四者并存。
 
 ---
 
@@ -548,18 +564,36 @@ cd <项目>; graphify install --project   # 写入项目级 skill
 
 ---
 
-#### 5-5. agent-deck — 多 AI 会话任务控制台 ❌ 不接入（与现有用法重叠）
+#### 5-5. agent-deck — 多 AI 会话任务控制台 ❌ 不接入（Windows 需 WSL，硬伤）
 
-**是什么**：终端 TUI 的"AI agent 任务控制台"——一个终端管理所有 Claude Code/Codex 会话：看谁在跑/在等/完成；MCP 管理器（按 `m` 开关 MCP 不改配置文件）；Skills Manager；**MCP Socket Pool**（多会话共享 MCP 进程，宣称省 85-90% 内存，崩溃 3 秒自动重连）。
+**是什么**：终端 TUI 的"AI agent 任务控制台"，构建在 **tmux** 之上——一个终端管理所有 Claude Code/Codex 会话。
+
+**全貌（功能清单）**：
+- **会话总览**：tmux 状态栏显示等待中的会话，`Ctrl+b` + 数字 1-6 直接跳转；智能状态检测（区分 Claude 在思考 vs 在等待输入 vs 出错）
+- **MCP Manager**：按 `m` 打开，`Space` 开关，Tab 切换作用域（项目/全局）——**不改 json 就能按会话启停 MCP**
+- **MCP Socket Pool**：多会话通过 Unix socket 共享 MCP 进程（`pool_all = true`），宣称省 85-90% 内存，MCP 崩溃 3 秒自动重连
+- **Skills Manager**：按 `s` 管理技能池（`~/.agent-deck/skills/pool`），按项目挂载/卸载
+- **Conductor 指挥层**：起多个"指挥官"会话管理子 agent 会话（`agent-deck conductor setup ops`），带状态迁移通知守护进程（子会话 running→waiting/error 时提醒父会话）；可接 **Telegram/Slack bridge** 手机远程监控发指令
+- **会话 fork**：带上下文继承地复制会话
+- **全局搜索**：跨会话搜对话内容
 
 | 优点 | 缺点 |
 |------|------|
-| MCP Socket Pool 是真价值：13 个 MCP 若多会话并发，内存显著省 | 本机以单会话为主，池化收益低 |
-| MCP/技能开关 UI 化，免手改 json | 配置走 `~/.agent-deck/config.toml` + skill 引导，接入成本不低 |
-| 对多项目多会话重度用户是刚需 | 需常驻终端跑 TUI；与 ccline 等监控位重叠 |
+| MCP Socket Pool + MCP 开关 UI 是真价值（13 个 MCP 多会话并发时内存显著省） | **原生不支持 Windows**：官方 FAQ 明确要求 **WSL2 + tmux**（MCP socket pooling 依赖 Unix socket），Windows 原生 Claude Code 会话用不了 |
+| Conductor/Telegram bridge 对"挂机多 agent"场景很强 | 本机已有 windows-mcp/omo hooks 生态，WSL 里再养一套运维成本高 |
+| 会话 fork/全局搜索是 tmux 没有的 AI 增强 | 学习曲线：conductor/profile/bridge 三层概念 |
 
-**如果要用**：按仓库 README 引导安装，`~/.agent-deck/config.toml` 声明现有 13 个 MCP 并开 `pool_all = true`。
-**触发改判条件**：开始同时开 3+ 个 Claude Code 会话并行干活时。
+**如果要用**（WSL 环境）：
+```bash
+# WSL 内执行（非 PowerShell）
+curl -fsSL https://raw.githubusercontent.com/asheshgoplani/agent-deck/main/install.sh | bash
+# 或 brew install asheshgoplani/tap/agent-deck
+agent-deck                    # 启动 TUI
+# ~/.agent-deck/config.toml 声明 MCP 并开 pool_all = true
+agent-deck conductor setup ops   # 起指挥官会话
+agent-deck uninstall --keep-data # 卸载（保数据）
+```
+**触发改判条件**：① 日常 3+ 并发会话（池化收益）且愿意进 WSL；或 ② 需要 Telegram/Slack 手机远程盯 agent 时。
 
 ---
 
