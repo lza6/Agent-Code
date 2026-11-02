@@ -293,7 +293,7 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 |------|------|------|
 | `context7` | ✅ 已升为全局 user 作用域 | 7.10 已验证 Connected |
 | `bd` (beads) | ✅ 已装 1.1.0，`bd setup claude` 配方已验证 | 每个新项目：`bd init && bd setup claude`（详见 7.4 节） |
-| `serena` MCP | ✅ 已接入全局（uvx 版，首装预热约 1-2 分钟，之后秒连） | 会话里直接用其 find_symbol 等工具 |
+| `serena` MCP | ✅ 已接入全局（uvx 版，首装预热约 1-2 分钟，之后秒连） | 会话里直接用其 find_symbol 等工具。**启动时会自动弹 Serena Dashboard 浏览器页**（127.0.0.1:24282，查看配置/日志/项目记忆用），在弹出的页面点 **"Disable automatic opening"** 可永久关掉；点 "Open this whenever Serena starts" 则每次都开。无官方汉化，页面纯英文 |
 | `tokentracker-cli` / `ccline` | 已装 | ccline 可做 statusLine 状态栏（显示上下文用量，防爆栈） |
 | `code-review-graph` | ✅ **已修复**（2026-02）：旧 uv venv 被删导致 `failed to locate pyvenv.cfg`，`uv tool install --force code-review-graph` 重装后 Connected | 更新：`uv tool upgrade code-review-graph` |
 
@@ -396,16 +396,22 @@ claude mcp add windows-mcp --scope user -- cmd /c uvx windows-mcp serve
 
 ### 7.12 第四轮：context-mode 与 qmd 落地 + MCP 全景使用手册（2026-02）
 
-#### context-mode ✅ 已接入（实测 Connected）
+#### context-mode ✅ 已接入完整版（MCP + 全套 hooks，实测 PASS）
 
 ```powershell
-claude mcp add context-mode --scope user -- cmd /c npx -y context-mode
+npm install -g context-mode                                          # 全局装（hooks 走稳定路径，不用 npx 冷启动）
+claude mcp add context-mode --scope user -- cmd /c context-mode      # MCP
 ```
 
-- **原理**：MCP 工具的大输出（Playwright 快照 ~56KB、GitHub issues 列表等）不再整段塞进 context，而是落盘到本地 FTS5 索引，context 里只留摘要，需要时 Agent 用 `ctx_search`/`ctx_fetch_and_index` 精准回填
-- **本机接入的是 MCP-only 模式**（6 个 ctx_* 工具自动可用）。完整版还有 hooks 自动路由（PreToolUse/PostToolUse/PreCompact/SessionStart）+ 插件，需走 plugin 安装路径，暂未启用——hooks 会改全局行为，观察 MCP 版收益后再决定
-- **与 rtk 的分工**：rtk 压缩 Bash 命令输出（RTK.md 指令层），context-mode 压缩 MCP 工具输出（MCP 层）——互补，可共存
-- 更新：npx 自动拉最新；诊断：会话内让它跑 `ctx_doctor`
+**hooks 完整版**（官方推荐走 `/plugin marketplace add mksglu/context-mode` 交互安装；本机直接把 4 个 hook 写进 `~/.claude/settings.json`，效果等同且免交互，Windows 兼容已验证——hooks 是纯 node .mjs，无 bash/jq 依赖，`context-mode doctor` 全 PASS）：
+- **PreToolUse**（Bash/WebFetch/Read/Grep）：拦截大输出命令，改走沙箱索引
+- **PostToolUse**：捕获工具输出自动落盘 FTS5 索引 + 会话记忆
+- **PreCompact**：压缩前快照会话状态（决策/进行中任务不丢）
+- **SessionStart**：注入 `<context_window_protection>` 路由指令（Think-in-Code 原则）
+
+**核心工具**：`ctx_batch_execute`（一次跑多条命令+索引+检索）、`ctx_search`（含时间线式会话记忆查询）、`ctx_execute`/`ctx_execute_file`（沙箱跑代码只返回结论）、`ctx_fetch_and_index`（替代 WebFetch）。诊断：`context-mode doctor`。
+
+**与 rtk 的分工**：rtk 压缩 Bash 命令输出（RTK.md 指令层），context-mode 压缩 MCP 工具输出 + 大文件读取 + 网页抓取（hooks+MCP 层）——互补共存。
 
 #### qmd ✅ 已接入（实测 Connected，2.8.3）
 
@@ -418,17 +424,10 @@ claude mcp add qmd --scope user -- cmd /c qmd mcp   # MCP（stdio）
 ```powershell
 qmd collection add "D:\我的笔记" --name notes   # 注册要索引的目录（默认 **/*.md）
 qmd update                                      # 建索引（BM25 全文立即可用）
-qmd pull                                        # 下载本地 GGUF 模型（一次性，较大）
-qmd embed                                       # 生成向量（此后 vsearch/query 可用）
 ```
-日常维护：`qmd update` 重新索引新增/修改文档（可在会话里让 Agent 跑）。
+**检索档位决策**：只用 **BM25 档**（`qmd search "关键词"`，零模型零算力，毫秒级）。向量/混合档需要 `qmd pull` 下载本地 GGUF 模型 + `qmd embed` 全量向量化，**吃本机 CPU/GPU 算力，明确不启用**（语义检索需求由 graft/Serena 覆盖代码侧）。
 
-**三档检索**：
-- `qmd search "关键词"` — BM25 关键词，零模型，毫秒级（已实测：命中 README 81% 分）
-- `qmd vsearch "自然语言"` — 纯向量语义（需 embed）
-- `qmd query "自然语言"` — 混合（BM25+向量+HyDE+LLM 重排，效果最好，最慢）
-
-**Agent 自动使用方式**：MCP 接入后 Agent 可直接调 qmd 工具检索已索引集合；CLI 也能让 Agent 跑 `qmd query`。定位与 graft/codegraph/Serena 互补——它们搜**代码结构**，qmd 搜**文档内容**（笔记/规格/README/转录）。
+**Agent 自动使用方式**：MCP 接入后 Agent 可直接调 qmd 工具检索已索引集合；CLI 也能让 Agent 跑 `qmd search`。定位与 graft/codegraph/Serena 互补——它们搜**代码结构**，qmd 搜**文档内容**（笔记/规格/README/转录）。
 
 **本机已索引集合**：`rules`（Desktop\编码规则）、`agentcode`（本仓库）。
 
