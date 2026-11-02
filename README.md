@@ -214,35 +214,46 @@ claude mcp add chrome-devtools --scope user -- cmd /c npx -y chrome-devtools-mcp
 - **优点**：Google 官方维护；性能 trace / network 检查是 playwright 没有的；npx 自动更新。
 - **缺点**：需要本机有 Chrome；和 playwright MCP 二选一按需开，都开会占上下文。
 
-### 7.3 claude-context（Zilliz）⭐ 推荐（全库语义搜索）
+### 7.3 claude-context（Zilliz）— 暂不采用 ❌
 
-**仓库**：https://github.com/zilliztech/claude-context
+语义向量检索全库。**不推荐进默认清单**：需要 embedding API（付费）+ 向量库，违背"全免费"原则。语义盲区由 graft/codegraph/Serena 三件套覆盖。若未来有免费 embedding 方案（本地 Ollama）可再评估。
 
-向量化的"整个代码库作为上下文"语义检索（embedding + Milford/Zilliz Cloud）。grep/codegraph 找不到"语义相近但名字不同"的代码时靠它。
-
-```powershell
-claude mcp add claude-context --scope user -- cmd /c npx -y @zilliz/claude-context-mcp
-```
-
-- **优点**：语义级检索，补齐 AST 图谱的盲区；官方 MCP 自动加载。
-- **缺点**：需要 embedding API key（如 OpenAI/voyage，有少量费用）+ 向量库；本地免费方案需配 Milvus Lite。
-
-### 7.4 beads (bd) — AI Agent 依赖感知任务追踪（已装未接入）
+### 7.4 beads (bd) — AI Agent 依赖感知任务追踪 ✅ 已装已接入
 
 **仓库**：https://github.com/gastownhall/beads ｜ 本机已装：`bd version 1.1.0`
 
 把任务/issue 建成**依赖图**持久化在 git 仓库里（Dolt 驱动），Agent 跨会话处理长任务不丢上下文，取代散乱的 markdown 计划。
 
+**一次性接入（每个项目里执行）**：
+
 ```powershell
-bd init        # 项目内初始化
-bd create "任务标题" --type task --priority 1
-bd ready       # 查看当前无阻塞可做的任务（Agent 自动认领）
-bd close <id>  # 完成任务
+cd 你的项目
+bd init               # 初始化 .beads/ + 本地 Dolt 数据库
+bd setup claude       # 装 Claude Code 集成：SessionStart hook 自动注入任务上下文 + CLAUDE.md 规则块
 ```
 
-- **优点**：`bd ready` 天然适配 Agent "下一步做什么"的决策；依赖图防止 Agent 跳步；数据随 git 走。
-- **缺点**：需要每个项目 `bd init`；与 `workflow_status.md` 流程二选一，别双轨记账。
-- **Agent 自动化**：在 CLAUDE.md 加一条规则即可（"复杂任务先 `bd ready` 认领、完成 `bd close`"）。
+**日常使用（Agent 自动走这套，你也可以手动）**：
+
+```bash
+bd create "实现登录接口" --type task --priority 1 -d "详细描述"   # 建任务
+bd dep add <子任务id> <父任务id>    # 建依赖关系（形成 DAG）
+bd ready                           # 关键命令：列出当前无阻塞、可立刻做的任务
+bd update <id> --claim             # 认领任务
+bd close <id>                      # 完成并关闭
+bd show <id>                       # 看详情
+bd list --status open              # 所有未完成任务
+bd prime                           # 输出完整工作流上下文（给 Agent 看的说明书）
+bd remember "踩坑经验"              # 项目级持久知识（替代 MEMORY.md）
+bd stats                           # 统计
+```
+
+**自动加载机制**：`bd setup claude` 装的 SessionStart hook 会在每次会话开始时自动运行 `bd prime --hook-json`，把任务状态注入上下文——Agent 一睁眼就知道有哪些活、先干哪个。配合依赖图，Agent 永远不会跳步。
+
+**同步机制**：任务数据在本地 Dolt DB，通过 git remote 的 `refs/dolt/data` 多机同步，`.beads/issues.jsonl` 是被动导出（人可读、可 review）。
+
+- **优点**：`bd ready` 天然适配 Agent "下一步做什么"的决策；依赖图防止跳步；SessionStart hook 全自动注入，无需手动召回；数据随 git 走，可多人/多机协作。
+- **缺点**：首次 `bd init` 拉起 Dolt 稍慢；别和 `workflow_status.md` 双轨记账，二选一。
+- **验证状态**：✅ 已安装 1.1.0，`bd setup claude` 配方已验证（生成 SessionStart hook + CLAUDE.md 集成块）。
 
 ### 7.5 Trail-Code（graft 的进化版，观察名单）
 
@@ -255,7 +266,8 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 | 工具 | 状态 | 建议 |
 |------|------|------|
 | `context7` | 仅装在某个项目作用域 | **升为全局**：`claude mcp add context7 --scope user -- cmd /c npx -y @upstash/context7-mcp` |
-| `bd` (beads) | 已装 1.1.0，未在任何项目启用 | 按上节接入复杂项目 |
+| `bd` (beads) | ✅ 已装 1.1.0，`bd setup claude` 配方已验证 | 每个新项目：`bd init && bd setup claude`（详见 7.4 节） |
+| `serena` MCP | ✅ 已接入全局（uvx 版，首装预热约 1-2 分钟，之后秒连） | 会话里直接用其 find_symbol 等工具 |
 | `tokentracker-cli` / `ccline` | 已装 | ccline 可做 statusLine 状态栏（显示上下文用量，防爆栈） |
 | `code-review-graph` | ❌ serve 故障（pyvenv.cfg 损坏） | 重装其 Python venv 或移除该 MCP 避免报错 |
 
