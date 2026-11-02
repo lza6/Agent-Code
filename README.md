@@ -465,28 +465,118 @@ claude mcp add gitnexus --scope user -- cmd /c gitnexus mcp   # MCP
 - **免费本地**：嵌入用本地 ONNX 运行时（`gitnexus embeddings` 管理），向量检索有 exact-scan 模式兜底，不强制下载大模型
 - **维护**：新项目 `npx gitnexus analyze`；全局仓库列表 `gitnexus list`；卸载 `gitnexus uninstall`
 - 与 graft/codegraph/Serena 并列使用，不冲突
-
-**第五轮评估但未接入**（理由如下）：
-
-| 工具 | 类型 | 不接入理由 |
-|------|------|-----------|
-| headroom (0.2.7) | token 压缩 MCP/wrap | PyPI 版无 MCP server（README 描述的 MCP 在 GitHub main 未发版）；wrap 模式强制配 LLM provider（交互式 first-run）；与 rtk+context-mode 完全重叠 → 观察名单 |
-| HexStrike AI | 安全渗透 MCP（150+ 工具） | 渗透测试专用，高风险工具集，非日常开发 → 按需 |
-| cocoindex (CocoIndex-code) | AST 语义代码索引 MCP | 与 graft/GitNexus 同赛道且更新太快，先观察两者实战收益 |
-| graphify | 图表生成 skill 安装器 | 主要是 skill 注册（用户排除 skill 类），CLI 部分可按需 `npx graphify` |
-| agent-deck / agent-teams-ai | 多智能体编排 | 编排层工具，与 Claude Code 内置 Agent/teams 重叠 |
-| token-savior | MCP profile 压缩 | pip 装但核心向量档需 embedding 模型（算力原则），BM25 档与 context-mode 重叠 |
-
-**扫描覆盖**：04-网络安全/05-基础设施/07-前端/08-多媒体/11-金融/13-清单 全部剩余子目录逐个翻 README 提取 MCP/hooks/插件特征（grep "claude mcp/MCP server/model context protocol/plugin"），确认无遗漏自动加载型工具。
-
-**最终结论**：五轮全量扫描完成。工具链 12 MCP 全绿，零算力原则守住（qmd 无模型、GitNexus 用本地 ONNX exact-scan、headroom 排除）。安全渗透类（HexStrike）和 RAG 类（LightRAG/graphrag）按需待取。
+**第五轮评估但未接入**（逐个详细展开，含优缺点与"如果要用"教程）：
 
 ---
 
-## 更新维护
+#### 5-1. headroom（headroomlabs）— token 压缩器 ⚠️ 暂不接入（观察名单）
 
-| 工具 | 更新命令 |
-|------|---------|
+**是什么**：在工具输出/日志/RAG 块/文件到达 LLM 之前做本地压缩（官方示例：10,144 token 日志压到 1,260 且保留 FATAL 行），支持**可逆压缩 CCR**（原文本地缓存，需要时取回）。官方宣称四种形态：Python/TS 库、独立 proxy、`headroom wrap claude` 包装器、MCP server（`headroom_compress`/`headroom_retrieve`/`headroom_stats`）。
+
+| 优点 | 缺点 |
+|------|------|
+| 压缩在本地执行，内容不出机器 | **PyPI 版(0.2.7)名不副实**：装完只有 `max` CLI，无 MCP server 入口（README 宣传的 MCP 在 GitHub main 未发版），装了也调不了（本机已实测 uv tool install 验证） |
+| 功能最全：库/proxy/wrap/MCP 四形态 + 跨 agent 共享记忆 + `headroom learn` 反思写入 CLAUDE.md | **wrap 模式强制交互式 first-run**：必须选 LLM provider（OpenAI/Anthropic/ollama/local GGUF），且压缩引擎要调 LLM——付费 key 或本地算力，两条都踩本机红线 |
+| CCR 可逆设计比 rtk 的一刀切更安全 | 与 rtk（命令输出）+ context-mode（MCP 输出+hooks）功能重叠，无独特增量 |
+
+**如果要用**（等 GitHub main 发版后）：
+```powershell
+uv tool install --from git+https://github.com/headroomlabs-ai/headroom headroom
+headroom wrap claude        # 交互式选 provider（ollama 免费但吃算力；API 则付费）
+headroom unwrap claude      # 卸载
+```
+**触发改判条件**：官方发布带 MCP server 的正式版，且提供"不调 LLM 的纯规则压缩"模式。
+
+---
+
+#### 5-2. HexStrike AI（0x4m4）— 渗透测试 MCP ❌ 不接入（按需待取）
+
+**是什么**：AI 驱动的网络安全自动化 MCP 平台，150+ 安全工具（nmap/nuclei/sqlmap/hydra/metasploit 等）+ 12 个自主攻击 agent（recon/exploit/bruteforce 专职），v6.0，MIT 开源。
+
+| 优点 | 缺点 |
+|------|------|
+| 免费 MIT，标准 MCP 协议，Claude Code 直连 | **高风险工具集**：含主动攻击/exploit/暴力破解，误触发即违法或破坏系统 |
+| 把 150 个 CLI 安全工具统一成 MCP 接口，侦察/漏扫效率高 | 安装重：git clone + python venv + requirements.txt + 底层还要装 nmap 等工具链 |
+| 已进 Claude Desktop/Cursor 官方目录，社区活跃 | 浏览器 agent 需额外 browser 依赖；部分 agent 要 LLM key |
+
+**如果要用**（隔离环境）：
+```powershell
+git clone https://github.com/0x4m4/hexstrike-ai.git D:	ools\hexstrike-ai; cd D:	ools\hexstrike-ai
+python -m venv hexstrike-env; .\hexstrike-env\Scripts\Activate.ps1
+pip install -r requirements.txt
+python hexstrike_server.py   # 起 API 服务（默认 127.0.0.1:8888），再按仓库 docs 注册 MCP 客户端入口
+```
+**触发改判条件**：做授权渗透测试/CTF 项目时，在隔离 VM 里临时接入。
+
+---
+
+#### 5-3. cocoindex（CocoIndex-code）— AST 语义代码索引 MCP ⚠️ 同赛道待观察
+
+**是什么**：增量式数据管道引擎，旗舰 CocoIndex-code 给 AI 编码 agent 做 AST 感知语义代码索引——Δ-only 增量处理（每次 commit 只处理变更）、语义搜索（按含义不按 grep）、live call graph、blast-radius 分析，宣称每回合省 70% token、re-index 80-90% 缓存命中。支持 Python/TS/Rust/Go。
+
+| 优点 | 缺点 |
+|------|------|
+| 增量架构是真功夫（Δ-only + 缓存命中），大仓库更新成本极低 | **与 graft/GitNexus/Serena 三重重叠**：语义搜索 vs Serena、call graph/blast-radius vs GitNexus、增量索引 vs graft |
+| 官方 Claude Code 集成文档完善 | 语义向量部分需 embedding 配置（算力/key 敏感） |
+| 管道引擎通用（不只代码，Slack/文档也能索引） | 商业公司主导，企业功能可能走向收费 |
+
+**如果要用**：
+```powershell
+pip install -U cocoindex
+# 按 https://cocoindex.io/docs/getting_started/ai_coding_agents/ 注册 MCP
+```
+**触发改判条件**：graft 或 GitNexus 在大仓库暴露"更新慢/图谱过时"问题时，A/B 替换测试。
+
+---
+
+#### 5-4. graphify — 代码库知识图谱可视化 ❌ 不接入（skill 依赖 + 重叠）
+
+**是什么**：把代码库映射成交互式知识图谱 `graph.html`（力导向图，节点=概念，颜色=社区检测，可点击/过滤/查路径），终端还能查最短依赖路径并逐跳高亮。CLI 安装时自动注册 **skill** 到 `.claude/skills/graphify/`。
+
+| 优点 | 缺点 |
+|------|------|
+| 可视化漂亮，架构汇报/新人 onboarding 有用 | **核心走 skill 注册**（`/graphify .` 手动触发）——skill 类无法自动加载，已排除 |
+| 一次安装 20+ agent 通用，Windows 支持 | 图谱数据与 graft/GitNexus 重复建设 |
+| 纯本地免费 | 依赖 Python 3.10+ 与 uv/pipx |
+
+**如果要用**（当一次性分析工具，不常驻）：
+```powershell
+uv tool install graphifyy
+cd <项目>; graphify install --project   # 写入项目级 skill
+# 会话里 /graphify . 生成 graph.html，浏览器打开
+```
+
+---
+
+#### 5-5. agent-deck — 多 AI 会话任务控制台 ❌ 不接入（与现有用法重叠）
+
+**是什么**：终端 TUI 的"AI agent 任务控制台"——一个终端管理所有 Claude Code/Codex 会话：看谁在跑/在等/完成；MCP 管理器（按 `m` 开关 MCP 不改配置文件）；Skills Manager；**MCP Socket Pool**（多会话共享 MCP 进程，宣称省 85-90% 内存，崩溃 3 秒自动重连）。
+
+| 优点 | 缺点 |
+|------|------|
+| MCP Socket Pool 是真价值：13 个 MCP 若多会话并发，内存显著省 | 本机以单会话为主，池化收益低 |
+| MCP/技能开关 UI 化，免手改 json | 配置走 `~/.agent-deck/config.toml` + skill 引导，接入成本不低 |
+| 对多项目多会话重度用户是刚需 | 需常驻终端跑 TUI；与 ccline 等监控位重叠 |
+
+**如果要用**：按仓库 README 引导安装，`~/.agent-deck/config.toml` 声明现有 13 个 MCP 并开 `pool_all = true`。
+**触发改判条件**：开始同时开 3+ 个 Claude Code 会话并行干活时。
+
+---
+
+#### 5-6. token-savior（4.24.0）— 会话记忆/压缩 MCP ❌ 不接入（算力 + 重叠）
+
+**是什么**：会话级记忆档案 MCP，宣称 tsbench 97.9% 准确率同时省 80% token。核心 `ts_search` 对历史会话观察做检索；向量档用 embedding warm-up；`TS_AUTO_EXTRACT=1` 用 LLM 自动提取记忆（需 Anthropic API key）。
+
+| 优点 | 缺点 |
+|------|------|
+| BM25 档免费可用，pip 单装简单 | **向量档要 embedding warm-up（算力红线）**；auto-extract 要付费 key（付费红线） |
+| "记忆观察"设计比纯文本压缩更结构化 | 与 icm（hooks 全自动记忆）+ context-mode（会话快照+timeline 检索）完全重叠 |
+| 官方有基准数据背书 | 本机已有两套更强记忆接入，第三套无增量 |
+
+**如果要用**：
+```powershell
+pip install "token-savior-recall[mcp]"   # 仅 BM25 档；设 TOKEN_SAVIOR_NO_WARMUP=1 跳过 embedding 预热
+```
 | graft | `npm install -g @nanonets/graft`（或 `graft upgrade`） |
 | codegraph | `npm install -g` 对应包 |
 | icm | `icm upgrade` |
