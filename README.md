@@ -295,7 +295,7 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 | `bd` (beads) | ✅ 已装 1.1.0，`bd setup claude` 配方已验证 | 每个新项目：`bd init && bd setup claude`（详见 7.4 节） |
 | `serena` MCP | ✅ 已接入全局（uvx 版，首装预热约 1-2 分钟，之后秒连） | 会话里直接用其 find_symbol 等工具 |
 | `tokentracker-cli` / `ccline` | 已装 | ccline 可做 statusLine 状态栏（显示上下文用量，防爆栈） |
-| `code-review-graph` | ❌ serve 故障（pyvenv.cfg 损坏） | 重装其 Python venv 或移除该 MCP 避免报错 |
+| `code-review-graph` | ✅ **已修复**（2026-02）：旧 uv venv 被删导致 `failed to locate pyvenv.cfg`，`uv tool install --force code-review-graph` 重装后 Connected | 更新：`uv tool upgrade code-review-graph` |
 
 ### 7.8 全量扫描补充发现（本机已有、零安装）
 
@@ -341,6 +341,33 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 | **mcp-chrome** (hangwin) | MCP，Chrome 插件式浏览器控制 | `npm install -g mcp-chrome-bridge` + 装配套 Chrome 扩展 | 复用**真实浏览器登录态**，20+ 工具（截图/网络监控/跨标签页） | 早期阶段；需手动装扩展 | 与 chrome-devtools-mcp 互补：后者干净实例调试，前者带登录态真实操作 |
 | **claude-hud** (jarrodwatts) | statusline 插件 | Claude Code 内：`/plugin marketplace add jarrodwatts/claude-hud` → `/plugin install claude-hud` → `/claude-hud:setup` | 实时上下文用量条（>85% 红色预警，防 context 爆栈）、工具/子代理状态 | 插件命令交互式安装，未在本会话实测；与 ccline 功能重叠 | 与已装 ccline 二选一即可 |
 
+#### Windows-MCP ✅ 已接入（实测 Connected）
+
+**接入命令（PowerShell 执行）**：
+```powershell
+claude mcp add windows-mcp --scope user -- cmd /c uvx windows-mcp serve
+```
+⚠️ 注意两处坑：① 必须用 PowerShell（Git Bash 会把 `/c` 转义成 `C:/` 损坏配置）；② 新版必须有 `serve` 子命令，缺了会 CONNECTION_CLOSED。
+
+**运行机制**：uvx 按需拉取 PyPI `windows-mcp`，本地运行零 API key，Agent 自动调用工具（MCP stdio）。
+
+**19 个工具（来自源码 tools/ 目录）**：
+
+| 类别 | 工具 | 能力 |
+|------|------|------|
+| UI 感知 | `Snapshot` / `DisplayInventory` | 抓取屏幕 UI 元素树（带 label，供其他工具定位）、显示器信息 |
+| 键鼠操作 | `Click` / `Type` / `Scroll` / `Move` / `Shortcut` / `MultiSelect` / `MultiEdit` | 点击、输入（可按 label 定位）、滚动、快捷键（"ctrl+c"/"alt+tab"）、批量选择/多字段填写 |
+| 窗口/应用 | `App` / `WaitFor` / `Wait` | 打开/切换应用、等待窗口出现、延时 |
+| 系统 | `PowerShell` / `Process` / `Registry` / `FileSystem` | 执行 PowerShell、列出/杀进程、读写注册表（HKCU/HKLM）、文件操作 |
+| 其他 | `Clipboard` / `Notification` / `Scrape` | 剪贴板读写、Windows toast 通知、网页抓取 |
+
+**典型用途**：QA 测试桌面应用、自动化 GUI 操作（如安装向导）、配合浏览器工具覆盖非 Web 场景。
+
+**风险与建议**：
+- 键鼠模拟会**抢占真实鼠标键盘焦点**，运行期间不要动电脑；`PowerShell`/`Registry`/`Process kill` 工具有系统级破坏力
+- 建议只在可信任务里用；若担心误操作，可临时 `claude mcp remove windows-mcp -s user` 卸载，或用其 `--config` 做工具白名单（新版支持 config.toml）
+- 开机自启（可选）：`uvx windows-mcp install` 会注册计划任务（本机未启用，按需）
+
 #### 仅对比说明（与已装重叠，不接入）
 
 - **codebase-memory-mcp** (DeusData)：纯 C 后端、17 工具、162 语言、Hybrid LSP 类型解析，还有 3D 图谱可视化（CBM Lens）。功能上是 graft+codegraph+Serena 的超集候选，但三件套已稳定在用，迁移收益不明确 → 观察名单。
@@ -348,6 +375,24 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 - **claude-plugins-official 的 LSP 插件**（typescript-lsp / pyright-lsp / gopls-lsp 等）：官方插件把 LSP 诊断接入 Agent 自动使用，免费且零边际。按项目语言选择性启用，Windows 上启用方式：`/plugin marketplace add anthropics/claude-plugins-official`。
 
 **结论更新**：context7 与 chrome-devtools 两个"待接入"已全部落地验证，免费工具链闭环完成。剩余高价值新方向只有 Windows 桌面控制（Windows-MCP）和带登录态浏览器（mcp-chrome），均按需启用。
+
+### 7.11 第三轮全量扫描（2026-02，Windows-MCP 落地轮）
+
+**修复记录**：code-review-graph 故障根因是原 uv venv 目录被删（exe 是 uv trampoline，启动时找不到 pyvenv.cfg），`uv tool install --force code-review-graph`（v2.3.9）重装即愈。Windows-MCP 已正式接入（见 7.10）。当前 **10/10 MCP 全部 Connected**。
+
+**新发现候选**：
+
+| 工具 | 类型 | 接入方式 | 优点 | 缺点/重叠 | 状态 |
+|------|------|---------|------|----------|------|
+| **context-mode** (mksglu) | MCP + 全套 hooks 插件（PreToolUse/PostToolUse/PreCompact/SessionStart） | `claude mcp add context-mode --scope user -- cmd /c npx -y context-mode`（完整版走 plugin 安装以启用 hooks 自动路由） | Hacker News #1；MCP 工具输出（Playwright 快照 56KB/次等）落盘索引、按需检索回填，直击 context 爆栈痛点；FTS5 全文索引本地免费 | 与 rtk 定位不同（rtk 压缩命令输出，context-mode 压缩 MCP 工具输出），互补；hooks 版本安装较重 | 待验证（未接入） |
+| **qmd** (tobi) | 本地搜索引擎 CLI/MCP | npm/二进制，BM25+向量+LLM 重排全本地（node-llama-cpp GGUF） | 笔记/文档/转录本地语义检索，agentic flow 友好；完全免费离线 | 首次下载 GGUF 模型较大；与 graft/codegraph 定位不同（文档 vs 代码） | 待验证（未接入） |
+| **Litho / deepwiki-rs** (sopaco) | Rust CLI，DeepWiki 类仓库 Wiki 生成 | `cargo install deepwiki-rs` 或 crates.io | 一键生成高质量 repo-wiki（中文文档全）；本地运行 | 需 Rust 工具链；生成型工具非常驻，按项目需要跑 | 按需（非常驻） |
+| **claude-devtools** (matt1398) | 桌面可观测性 app | 按 README 安装（分析 Claude Code session 日志） | 回合级 context 数据、压缩可视化、子代理执行树 | 观测工具，非常驻，不进 MCP | 观察名单 |
+| **Windows-MCP 官方 `install` 命令** | 开机常驻 | `uvx windows-mcp install`（计划任务）+ `auth` 生成密钥 | 常驻后免 uvx 冷启动 | 本机暂不需要 | 未启用 |
+
+**扫描覆盖**：npm 全局 90+ 包复核、`.local/bin`/`.bun/bin`、choco、uv、D:\参考项目 全部 13 个分类目录（含 Agent 记忆/多智能体编排/文档处理/搜索增强/桌面系统工具），上游 awesome-claude-code 与 claude-plugins-official 复核。
+
+**结论**：与现有工具链功能重叠外的空白已基本扫尽。下一个真正值得试的是 **context-mode**（与 rtk 互补的另一半 context 治理），其次是 qmd（本地文档语义检索）。
 
 ---
 
