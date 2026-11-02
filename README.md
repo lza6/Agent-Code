@@ -188,9 +188,9 @@ codegraph init -i
 
 > 筛选标准：**能被 Agent 自动识别/自动使用**（MCP、hooks、plugins），排除手动 slash-command/skills 类。
 
-### 7.1 Serena MCP ⭐ 推荐（语义代码检索，免费）
+### 7.1 Serena MCP ⭐ 推荐（语义代码检索，免费）✅ 已接入
 
-**仓库**：https://github.com/oraios/serena
+**仓库**：https://github.com/oraios/serena ｜ **状态**：✅ 已接入 user config，`claude mcp list` 验证 Connected
 
 基于 LSP 的语义级 `find_symbol` / `find_referencing_symbols` / 符号级编辑，与 codegraph 互补（codegraph 偏图关系，Serena 偏精确符号操作）。
 
@@ -198,8 +198,17 @@ codegraph init -i
 claude mcp add serena --scope user -- cmd /c uvx --from git+https://github.com/oraios/serena serena start-mcp-server
 ```
 
-- **优点**：完全免费本地运行；uvx 自动拉取最新版免维护；MCP 自动加载无需配置规则。
-- **缺点**：每次首次启动 uvx 解析略慢；与 codegraph/graft 功能有重叠（大仓库三者选二即可）。
+**⚠️ 首装必读**：第一次连接会超时——uvx 需要从 GitHub 拉包构建（约 76 个依赖，1-3 分钟）。先手动预热一次缓存即可永久解决：
+
+```powershell
+uvx --from git+https://github.com/oraios/serena serena --version   # 预热，输出版本号即成功
+claude mcp list                                                     # 再查就是 Connected
+```
+
+**自动使用机制（无需任何配置）**：
+- MCP 工具对 Agent **自动可见**——会话里 Agent 看得到 `find_symbol`、`find_referencing_symbols`、`get_symbols_overview`、`replace_symbol_body` 等工具，按需自动调用
+- Claude Code 会把任务语义与工具描述匹配：你说"重构这个函数"，Agent 自己决定先用 Serena 找符号/看引用再改——就像它自动用 Grep/Glob 一样，**不需要你在 prompt 里点名**
+- 唯一注意：MCP 工具定义会占一点上下文（约 1-2k tokens），这是自动加载的代价
 
 ### 7.2 chrome-devtools-mcp ⭐ 推荐（真实浏览器调试）
 
@@ -253,7 +262,24 @@ bd stats                           # 统计
 
 - **优点**：`bd ready` 天然适配 Agent "下一步做什么"的决策；依赖图防止跳步；SessionStart hook 全自动注入，无需手动召回；数据随 git 走，可多人/多机协作。
 - **缺点**：首次 `bd init` 拉起 Dolt 稍慢；别和 `workflow_status.md` 双轨记账，二选一。
-- **验证状态**：✅ 已安装 1.1.0，`bd setup claude` 配方已验证（生成 SessionStart hook + CLAUDE.md 集成块）。
+- **验证状态**：✅ 已安装 1.1.0，`bd setup claude` 配方已验证；fork 项目贡献者模式 + 规划仓库全链路实测通过（create → ready → close）。
+
+**全局一次性接入（任意目录跑一次，所有项目生效）**：
+
+```powershell
+bd setup claude   # 装全局 SessionStart hook（bd prime --hook-json）+ 全局 CLAUDE.md 规则块
+```
+
+**每项目激活（只需 `bd init` 这一步）**：
+
+```powershell
+cd 你的项目
+bd init     # 初始化 .beads/（Dolt 嵌入库）。fork 项目会进贡献者向导：
+            #   issues 自动路由到规划仓库（~/.beads-planning），不污染上游 PR
+            #   向导后需在规划仓库补一次 bd init（Windows 版偶发漏建库）
+```
+
+**Hook 空转安全**：未 init 的项目里 SessionStart hook 静默输出空内容，零副作用——hooks 装一次全局生效，无需重复 `bd setup`。
 
 ### 7.5 Trail-Code（graft 的进化版，观察名单）
 
@@ -271,9 +297,24 @@ graft 作者的新项目：在代码图谱之上加了 **Learnings** 层（团�
 | `tokentracker-cli` / `ccline` | 已装 | ccline 可做 statusLine 状态栏（显示上下文用量，防爆栈） |
 | `code-review-graph` | ❌ serve 故障（pyvenv.cfg 损坏） | 重装其 Python venv 或移除该 MCP 避免报错 |
 
-### 7.7 观察名单（好但不满足"自动加载"或暂不成熟）
+### 7.8 全量扫描补充发现（本机已有、零安装）
 
-- **supermemory**（`/plugin install supermemory`）：插件市场自动加载的记忆插件，与 icm 重叠，icm 更强。
+对 npm 全局、`.local/bin`、choco、uv/bun 全量扫描后，已装但之前没列的：
+
+| 工具 | 说明 | 建议 |
+|------|------|------|
+| `chrome-devtools-mcp@0.9.0` | npm 全局已装但**未接入 MCP 配置** | `claude mcp add chrome-devtools --scope user -- cmd /c npx -y chrome-devtools-mcp@latest` 即可激活（见 7.2） |
+| `@upstash/context7-mcp@4.4.4` | npm 已装，仅项目作用域 | 升全局（见 7.6 表） |
+| `omo-*`（Oh-My-Opossum 套件） | `.local/bin` 一整套：omo-lsp / omo-codegraph / omo-git-bash-hook / omo-ultrawork 等 | 已自装 hooks 套件，与现架构并存；如异常检查其 hooks |
+| `ralph` (Ralph Orchestrator) | 自主循环编排器（npm @ralph-orchestrator/ralph-cli） | 适合"睡前挂机跑任务"场景，按需用 |
+| `specify` | spec-kit 规格驱动开发 CLI | 按需 |
+| `goose` | Block 的 AI agent CLI | 备用 agent，非 Claude Code 生态必需 |
+| `bun@1.3.2` / `uv` | 运行时 | 已在为其他工具服务 |
+| choco: ripgrep/ffmpeg/redis/nasm | 系统级依赖 | 无需动 |
+
+**结论**：免费工具链已覆盖——图谱（graft+codegraph+Serena）、记忆（icm）、任务（beads）、输出压缩（rtk）、文档（context7 待升全局）、调试（chrome-devtools 待接入）、推理（sequential-thinking）。无遗漏的高价值空白。
+
+### 7.9 观察名单（好但不满足"自动加载"或暂不成熟）
 - **everything-claude-code (ecc)**：hooks 套件（agentshield 等），本机 CLAUDE.md 已引用其方法，可按需装。
 - **claude-md-doctor**：CLAUDE.md 体检工具，一次性诊断用，非常驻。
 
