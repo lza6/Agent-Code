@@ -657,6 +657,13 @@ pip install "token-savior-recall[mcp]"   # 仅 BM25 档；设 TOKEN_SAVIOR_NO_WA
 | rtk | 重新下载对应发布版 |
 | MCP (npx 类) | 无需手动，npx 自动拉最新 |
 | windows-mcp | uvx 自动拉最新，无需手动 |
+| graft-Max（自研） | 本地 `D:\自研工具\graft-Max`：`git fetch upstream && git merge upstream/main` → `npm run build` → `npm test`；GitHub: https://github.com/lza6/graft-Max |
+
+## 自研工具
+
+| 仓库 | 说明 | 状态 |
+|------|------|------|
+| **[graft-Max](https://github.com/lza6/graft-Max)** | graft（本清单最好用的代码图谱工具）的自研 fork：v0.28.0-max.1 品牌化基座，规划统一 MCP 门面（聚合 qmd/gitnexus 查询，Agent 只见一个 server）。本地源码 `D:\自研工具\graft-Max`，remotes：origin=lza6/graft-Max + upstream=nanonets/graft。自研知识库在仓库 `docs-selfdev/` | 基座已建，tsc 0 错/build 通过/test 4043 pass（与上游同基线） |
 
 ## License
 
